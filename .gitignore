@@ -1,0 +1,11 @@
+bin/
+obj/
+.vs/
+*.user
+*.suo
+*.rsuser
+*.cache
+*.pdb
+*.publish.xml.user
+TestResults/
+artifacts/
