@@ -32,8 +32,92 @@
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <Border Background="#111" CornerRadius="8" BorderBrush="#333" BorderThickness="1">
-                    <vlc:VideoView x:Name="VideoView" />
+                <Border x:Name="VideoHostBorder" Background="#111" CornerRadius="8" BorderBrush="#333" BorderThickness="1">
+                    <Grid>
+                        <vlc:VideoView x:Name="VideoView" />
+
+                        <Grid IsHitTestVisible="False" Margin="12">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <Grid Grid.Row="0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+
+                                <Border x:Name="StartMarkerBadge"
+                                        Background="#CC118AB2"
+                                        BorderBrush="#66FFFFFF"
+                                        BorderThickness="1"
+                                        CornerRadius="6"
+                                        Padding="10,6"
+                                        HorizontalAlignment="Left"
+                                        Visibility="Collapsed">
+                                    <StackPanel>
+                                        <TextBlock Text="开始点" Foreground="White" FontSize="12" />
+                                        <TextBlock x:Name="StartMarkerTextBlock" Text="00:00:00" Foreground="White" FontWeight="Bold" />
+                                    </StackPanel>
+                                </Border>
+
+                                <Border x:Name="EndMarkerBadge"
+                                        Grid.Column="1"
+                                        Background="#CCEF476F"
+                                        BorderBrush="#66FFFFFF"
+                                        BorderThickness="1"
+                                        CornerRadius="6"
+                                        Padding="10,6"
+                                        HorizontalAlignment="Right"
+                                        Visibility="Collapsed">
+                                    <StackPanel>
+                                        <TextBlock Text="结束点" Foreground="White" FontSize="12" />
+                                        <TextBlock x:Name="EndMarkerTextBlock" Text="00:00:00" Foreground="White" FontWeight="Bold" />
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
+
+                            <Canvas x:Name="MarkerCanvas"
+                                    Grid.Row="2"
+                                    Height="34"
+                                    Margin="0,0,0,4"
+                                    SizeChanged="MarkerCanvas_SizeChanged">
+                                <Border x:Name="RangeTrack"
+                                        Canvas.Left="0"
+                                        Canvas.Top="13"
+                                        Height="8"
+                                        CornerRadius="4"
+                                        Background="#55000000"
+                                        BorderBrush="#55FFFFFF"
+                                        BorderThickness="1" />
+                                <Border x:Name="SelectedRangeBar"
+                                        Canvas.Left="0"
+                                        Canvas.Top="13"
+                                        Height="8"
+                                        CornerRadius="4"
+                                        Background="#AAFFD166"
+                                        Visibility="Collapsed" />
+                                <Border x:Name="StartMarkerLine"
+                                        Canvas.Left="0"
+                                        Canvas.Top="2"
+                                        Width="3"
+                                        Height="30"
+                                        Background="#118AB2"
+                                        CornerRadius="1.5"
+                                        Visibility="Collapsed" />
+                                <Border x:Name="EndMarkerLine"
+                                        Canvas.Left="0"
+                                        Canvas.Top="2"
+                                        Width="3"
+                                        Height="30"
+                                        Background="#EF476F"
+                                        CornerRadius="1.5"
+                                        Visibility="Collapsed" />
+                            </Canvas>
+                        </Grid>
+                    </Grid>
                 </Border>
 
                 <StackPanel Grid.Row="1" Margin="0,12,0,0">

@@ -1,15 +1,22 @@
 using LibVLCSharp.Shared;
 using Microsoft.Win32;
+using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
+using MediaBrush = System.Windows.Media.Brush;
+using MediaColor = System.Windows.Media.Color;
+using MediaSolidColorBrush = System.Windows.Media.SolidColorBrush;
 using VideoCutter.Wpf.ViewModels;
 
 namespace VideoCutter.Wpf;
 
 public partial class MainWindow : Window
 {
+    private static readonly MediaBrush DefaultVideoBorderBrush = new MediaSolidColorBrush(MediaColor.FromRgb(51, 51, 51));
+    private static readonly MediaBrush ActiveVideoBorderBrush = new MediaSolidColorBrush(MediaColor.FromRgb(255, 209, 102));
+
     private readonly MainViewModel _viewModel = new();
     private readonly LibVLC _libVlc;
     private readonly MediaPlayer _mediaPlayer;
@@ -35,6 +42,7 @@ public partial class MainWindow : Window
         _positionTimer.Tick += PositionTimer_Tick;
         _positionTimer.Start();
 
+        _viewModel.PropertyChanged += ViewModel_PropertyChanged;
         Closed += MainWindow_Closed;
         PreviewKeyDown += MainWindow_PreviewKeyDown;
         Focusable = true;
@@ -44,7 +52,7 @@ public partial class MainWindow : Window
     {
         var dialog = new OpenFileDialog
         {
-            Filter = "视频文件|*.mp4;*.mov;*.mkv;*.avi;*.flv;*.wmv|所有文件|*.*"
+            Filter = "Video Files|*.mp4;*.mov;*.mkv;*.avi;*.flv;*.wmv|All Files|*.*"
         };
 
         if (dialog.ShowDialog() == true)
@@ -59,7 +67,7 @@ public partial class MainWindow : Window
     {
         var dialog = new SaveFileDialog
         {
-            Filter = "MP4 文件|*.mp4|MKV 文件|*.mkv|所有文件|*.*",
+            Filter = "MP4 Files|*.mp4|MKV Files|*.mkv|All Files|*.*",
             FileName = _viewModel.SuggestedOutputFileName
         };
 
@@ -111,11 +119,13 @@ public partial class MainWindow : Window
     private void SetStartFromCurrent_Click(object sender, RoutedEventArgs e)
     {
         _viewModel.StartTimeText = GetCurrentPlaybackTime().ToString("hh\\:mm\\:ss");
+        UpdateMarkerOverlay();
     }
 
     private void SetEndFromCurrent_Click(object sender, RoutedEventArgs e)
     {
         _viewModel.EndTimeText = GetCurrentPlaybackTime().ToString("hh\\:mm\\:ss");
+        UpdateMarkerOverlay();
     }
 
     private void PositionSlider_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -164,6 +174,8 @@ public partial class MainWindow : Window
         {
             SetSliderFromPosition(_mediaPlayer.Position);
         }
+
+        UpdateMarkerOverlay();
     }
 
     private void MainWindow_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -184,10 +196,12 @@ public partial class MainWindow : Window
                 break;
             case Key.I:
                 _viewModel.StartTimeText = GetCurrentPlaybackTime().ToString("hh\\:mm\\:ss");
+                UpdateMarkerOverlay();
                 e.Handled = true;
                 break;
             case Key.O:
                 _viewModel.EndTimeText = GetCurrentPlaybackTime().ToString("hh\\:mm\\:ss");
+                UpdateMarkerOverlay();
                 e.Handled = true;
                 break;
         }
@@ -201,6 +215,7 @@ public partial class MainWindow : Window
         _mediaPlayer.Play();
         _mediaPlayer.Pause();
         _viewModel.StatusText = "视频已就绪，可播放和定位";
+        UpdateMarkerOverlay();
     }
 
     private void PlayMedia()
@@ -228,6 +243,7 @@ public partial class MainWindow : Window
         SetSliderFromPosition(0f);
         SeekPreviewTextBlock.Text = "00:00:00";
         _viewModel.StatusText = "已停止";
+        UpdateMarkerOverlay();
     }
 
     private void TogglePlayPause()
@@ -269,6 +285,19 @@ public partial class MainWindow : Window
         }
     }
 
+    private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(MainViewModel.StartTimeText) or nameof(MainViewModel.EndTimeText))
+        {
+            UpdateMarkerOverlay();
+        }
+    }
+
+    private void MarkerCanvas_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        UpdateMarkerOverlay();
+    }
+
     private TimeSpan GetDuration()
     {
         return _mediaPlayer.Length > 0
@@ -296,9 +325,115 @@ public partial class MainWindow : Window
         _ignoreSliderChange = false;
     }
 
+    private void UpdateMarkerOverlay()
+    {
+        if (!IsLoaded)
+            return;
+
+        var trackWidth = Math.Max(0, MarkerCanvas.ActualWidth);
+        RangeTrack.Width = trackWidth;
+
+        var duration = GetDuration();
+        if (duration <= TimeSpan.Zero || trackWidth <= 0)
+        {
+            CollapseMarkerOverlay();
+            VideoHostBorder.BorderBrush = DefaultVideoBorderBrush;
+            return;
+        }
+
+        var hasStart = TimeSpan.TryParse(_viewModel.StartTimeText, out var startTime);
+        var hasEnd = TimeSpan.TryParse(_viewModel.EndTimeText, out var endTime);
+
+        if (hasStart)
+        {
+            startTime = ClampTime(startTime, duration);
+            StartMarkerTextBlock.Text = startTime.ToString("hh\\:mm\\:ss");
+            StartMarkerBadge.Visibility = Visibility.Visible;
+            StartMarkerLine.Visibility = Visibility.Visible;
+            Canvas.SetLeft(StartMarkerLine, GetMarkerLeft(startTime, duration, StartMarkerLine.Width, trackWidth));
+        }
+        else
+        {
+            StartMarkerBadge.Visibility = Visibility.Collapsed;
+            StartMarkerLine.Visibility = Visibility.Collapsed;
+        }
+
+        if (hasEnd)
+        {
+            endTime = ClampTime(endTime, duration);
+            EndMarkerTextBlock.Text = endTime.ToString("hh\\:mm\\:ss");
+            EndMarkerBadge.Visibility = Visibility.Visible;
+            EndMarkerLine.Visibility = Visibility.Visible;
+            Canvas.SetLeft(EndMarkerLine, GetMarkerLeft(endTime, duration, EndMarkerLine.Width, trackWidth));
+        }
+        else
+        {
+            EndMarkerBadge.Visibility = Visibility.Collapsed;
+            EndMarkerLine.Visibility = Visibility.Collapsed;
+        }
+
+        if (hasStart && hasEnd)
+        {
+            if (endTime < startTime)
+            {
+                (startTime, endTime) = (endTime, startTime);
+                StartMarkerTextBlock.Text = startTime.ToString("hh\\:mm\\:ss");
+                EndMarkerTextBlock.Text = endTime.ToString("hh\\:mm\\:ss");
+                Canvas.SetLeft(StartMarkerLine, GetMarkerLeft(startTime, duration, StartMarkerLine.Width, trackWidth));
+                Canvas.SetLeft(EndMarkerLine, GetMarkerLeft(endTime, duration, EndMarkerLine.Width, trackWidth));
+            }
+
+            var startX = GetMarkerCenter(startTime, duration, trackWidth);
+            var endX = GetMarkerCenter(endTime, duration, trackWidth);
+            Canvas.SetLeft(SelectedRangeBar, startX);
+            SelectedRangeBar.Width = Math.Max(0, endX - startX);
+            SelectedRangeBar.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            SelectedRangeBar.Visibility = Visibility.Collapsed;
+        }
+
+        VideoHostBorder.BorderBrush = hasStart || hasEnd ? ActiveVideoBorderBrush : DefaultVideoBorderBrush;
+    }
+
+    private void CollapseMarkerOverlay()
+    {
+        StartMarkerBadge.Visibility = Visibility.Collapsed;
+        EndMarkerBadge.Visibility = Visibility.Collapsed;
+        StartMarkerLine.Visibility = Visibility.Collapsed;
+        EndMarkerLine.Visibility = Visibility.Collapsed;
+        SelectedRangeBar.Visibility = Visibility.Collapsed;
+    }
+
+    private static TimeSpan ClampTime(TimeSpan time, TimeSpan duration)
+    {
+        if (time < TimeSpan.Zero)
+            return TimeSpan.Zero;
+        if (time > duration)
+            return duration;
+        return time;
+    }
+
+    private static double GetMarkerCenter(TimeSpan time, TimeSpan duration, double trackWidth)
+    {
+        if (duration.TotalMilliseconds <= 0 || trackWidth <= 0)
+            return 0;
+
+        var ratio = time.TotalMilliseconds / duration.TotalMilliseconds;
+        return Math.Max(0, Math.Min(trackWidth, ratio * trackWidth));
+    }
+
+    private static double GetMarkerLeft(TimeSpan time, TimeSpan duration, double markerWidth, double trackWidth)
+    {
+        var center = GetMarkerCenter(time, duration, trackWidth);
+        return Math.Max(0, Math.Min(trackWidth - markerWidth, center - (markerWidth / 2)));
+    }
+
     private void MainWindow_Closed(object? sender, EventArgs e)
     {
         _positionTimer.Stop();
+        _viewModel.PropertyChanged -= ViewModel_PropertyChanged;
         _mediaPlayer.Dispose();
         _libVlc.Dispose();
     }
